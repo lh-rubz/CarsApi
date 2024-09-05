@@ -3,16 +3,15 @@ const cors = require("cors");
 const mysql = require("mysql2");
 const serverless = require("serverless-http");
 
-// Create Express app
 const app = express();
 const router = express.Router();
 
-// Use environment variables for MySQL connection
+// Create MySQL connection pool
 const pool = mysql.createPool({
-	host: process.env.DB_HOST || "localhost",
-	user: process.env.DB_USER || "root",
-	password: process.env.DB_PASSWORD || "root",
-	database: process.env.DB_DATABASE || "car_rental",
+	host: "localhost",
+	user: "root",
+	password: "root",
+	database: "Car_rental",
 	waitForConnections: true,
 	connectionLimit: 10,
 	queueLimit: 0,
@@ -22,8 +21,6 @@ const promisePool = pool.promise();
 
 app.use(cors());
 app.use(express.json());
-
-// Define routes
 
 // GET all cars
 router.get("/cars", async (req, res) => {
@@ -311,15 +308,124 @@ router.delete("/rentals/:id", async (req, res) => {
 			return res.status(404).json({ error: "Rental not found" });
 		}
 
-		// Optionally, return remaining rentals or a success message
 		const [rows] = await promisePool.query("SELECT * FROM Rentals");
 		res.json(rows);
 	} catch (error) {
 		res.status(500).json({ error: error.message });
 	}
 });
+// GET all users
+router.get("/users", async (req, res) => {
+	try {
+		const [rows] = await promisePool.query("SELECT * FROM Users");
+		res.json(rows);
+	} catch (error) {
+		res.status(500).json({ error: error.message });
+	}
+});
+// GET a specific user by ID
+router.get("/users/:id", async (req, res) => {
+	const userId = parseInt(req.params.id, 10);
+	if (isNaN(userId)) {
+		return res.status(400).json({ error: "Invalid user ID" });
+	}
+	try {
+		const [rows] = await promisePool.query(
+			"SELECT * FROM Users WHERE UserID = ?",
+			[userId]
+		);
+		if (rows.length === 0) {
+			return res.status(404).json({ error: "User not found" });
+		}
+		res.json(rows[0]);
+	} catch (error) {
+		res.status(500).json({ error: error.message });
+	}
+});
+// POST a new user
+router.post("/users", async (req, res) => {
+	const { Name, Email, Password } = req.body;
 
-// Graceful shutdown
+	if (
+		typeof Name !== "string" ||
+		typeof Email !== "string" ||
+		typeof Password !== "string"
+	) {
+		return res.status(400).json({ error: "Invalid input" });
+	}
+
+	try {
+		const [result] = await promisePool.query(
+			"INSERT INTO Users (Name, Email, Password) VALUES (?, ?, ?)",
+			[Name, Email, Password]
+		);
+		res.status(201).json({
+			UserID: result.insertId,
+			Name,
+			Email,
+			Password,
+		});
+	} catch (error) {
+		res.status(500).json({ error: error.message });
+	}
+});
+// PUT (Update) a user
+router.put("/users/:id", async (req, res) => {
+	const userId = parseInt(req.params.id, 10);
+	const { Name, Email, Password } = req.body;
+
+	if (
+		isNaN(userId) ||
+		typeof Name !== "string" ||
+		typeof Email !== "string" ||
+		typeof Password !== "string"
+	) {
+		return res.status(400).json({ error: "Invalid input" });
+	}
+
+	try {
+		const [result] = await promisePool.query(
+			"UPDATE Users SET Name = ?, Email = ?, Password = ? WHERE UserID = ?",
+			[Name, Email, Password, userId]
+		);
+		if (result.affectedRows === 0) {
+			return res.status(404).json({ error: "User not found" });
+		}
+		res.json({
+			UserID: userId,
+			Name,
+			Email,
+			Password,
+		});
+	} catch (error) {
+		res.status(500).json({ error: error.message });
+	}
+});
+// DELETE a user
+router.delete("/users/:id", async (req, res) => {
+	const userId = parseInt(req.params.id, 10);
+
+	if (isNaN(userId)) {
+		return res.status(400).json({ error: "Invalid user ID" });
+	}
+
+	try {
+		const [result] = await promisePool.query(
+			"DELETE FROM Users WHERE UserID = ?",
+			[userId]
+		);
+		if (result.affectedRows === 0) {
+			return res.status(404).json({ error: "User not found" });
+		}
+
+		// Optionally, return remaining users or a success message
+		const [rows] = await promisePool.query("SELECT * FROM Users");
+		res.json(rows);
+	} catch (error) {
+		res.status(500).json({ error: error.message });
+	}
+});
+
 function handleShutdown(signal) {
 	console.log(`Received ${signal}. Closing MySQL pool...`);
 	pool.end((err) => {
@@ -332,17 +438,9 @@ function handleShutdown(signal) {
 	});
 }
 
+// Listen for termination signals
 process.on("SIGINT", () => handleShutdown("SIGINT"));
 process.on("SIGTERM", () => handleShutdown("SIGTERM"));
-
-// Local server for testing
-if (require.main === module) {
-	app.listen(3000, () => {
-		console.log("Local server running on http://localhost:3000");
-	});
-}
-
 app.use("/.netlify/functions/api", router);
 
-// Export for Netlify serverless function
 module.exports.handler = serverless(app);
