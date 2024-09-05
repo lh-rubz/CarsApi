@@ -3,15 +3,16 @@ const cors = require("cors");
 const mysql = require("mysql2");
 const serverless = require("serverless-http");
 
+// Create Express app
 const app = express();
 const router = express.Router();
 
-// Create MySQL connection pool
+// Use environment variables for MySQL connection
 const pool = mysql.createPool({
-	host: "localhost",
-	user: "root",
-	password: "root",
-	database: "Car_rental",
+	host: process.env.DB_HOST || "localhost",
+	user: process.env.DB_USER || "root",
+	password: process.env.DB_PASSWORD || "root",
+	database: process.env.DB_DATABASE || "car_rental",
 	waitForConnections: true,
 	connectionLimit: 10,
 	queueLimit: 0,
@@ -21,6 +22,8 @@ const promisePool = pool.promise();
 
 app.use(cors());
 app.use(express.json());
+
+// Define routes
 
 // GET all cars
 router.get("/cars", async (req, res) => {
@@ -316,6 +319,7 @@ router.delete("/rentals/:id", async (req, res) => {
 	}
 });
 
+// Graceful shutdown
 function handleShutdown(signal) {
 	console.log(`Received ${signal}. Closing MySQL pool...`);
 	pool.end((err) => {
@@ -328,9 +332,17 @@ function handleShutdown(signal) {
 	});
 }
 
-// Listen for termination signals
 process.on("SIGINT", () => handleShutdown("SIGINT"));
 process.on("SIGTERM", () => handleShutdown("SIGTERM"));
+
+// Local server for testing
+if (require.main === module) {
+	app.listen(3000, () => {
+		console.log("Local server running on http://localhost:3000");
+	});
+}
+
 app.use("/.netlify/functions/api", router);
 
+// Export for Netlify serverless function
 module.exports.handler = serverless(app);
