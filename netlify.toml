@@ -1,4 +1,9 @@
 [build]
-  functions = "/functions"
+  command = "npm run build"
+  publish = "dist"  # Ensure this matches the output directory of your build
+  functions = "functions"
 
-
+[[redirects]]
+  from = "/*"
+  to = "/.netlify/functions/api"
+  status = 200
